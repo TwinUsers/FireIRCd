@@ -100,13 +100,29 @@ rehash_ssld(struct Client *source_p)
 static void
 rehash_motd(struct Client *source_p)
 {
+    struct stat sb;
+    struct tm *local_tm;
+    
     sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
                            "%s is forcing re-reading of MOTD file",
                            get_oper_name(source_p));
     if (!MyConnect(source_p))
         remote_rehash_oper_p = source_p;
 
-    cache_user_motd();
+    free_cachefile(user_motd);
+    user_motd = cache_file(MPATH, "ircd.motd", 0);
+    
+    if(stat(MPATH, &sb) == 0) {
+        local_tm = localtime(&sb.st_mtime);
+        
+        if(local_tm != NULL) {
+            rb_snprintf(user_motd_changed, sizeof(user_motd_changed),
+                        "%d/%d/%d %d:%d",
+                        local_tm->tm_mday, local_tm->tm_mon + 1,
+                        1900 + local_tm->tm_year, local_tm->tm_hour,
+                        local_tm->tm_min);
+        }
+    }
 }
 
 static void

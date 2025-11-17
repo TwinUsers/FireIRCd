@@ -30,8 +30,12 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
+#include <openssl/bio.h>
 
 #include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+#include <openssl/decoder.h>
+#endif
 
 /*
  * A long time ago, in a world far away, OpenSSL had a well-established mechanism for ensuring compatibility with

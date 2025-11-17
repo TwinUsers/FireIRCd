@@ -392,25 +392,69 @@ rb_setup_ssl_server(const char *const certfile, const char *keyfile,
 	}
 	else
 	{
-		FILE *const dhf = fopen(dhfile, "r");
+		BIO *const bio = BIO_new_file(dhfile, "r");
 		DH *dhp = NULL;
 
-		if(dhf == NULL)
+		if(bio == NULL)
 		{
-			rb_lib_log("%s: fopen ('%s'): %s", __func__, dhfile, strerror(errno));
+			rb_lib_log("%s: BIO_new_file ('%s'): %s", __func__, dhfile, strerror(errno));
 		}
-		else if(PEM_read_DHparams(dhf, &dhp, NULL, NULL) == NULL)
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L && !defined(LIBRESSL_VERSION_NUMBER)
+		/* OpenSSL 3.0+ - use EVP_PKEY API */
+		else
 		{
-			rb_lib_log("%s: PEM_read_DHparams ('%s'): %s", __func__, dhfile,
+			EVP_PKEY *pkey = NULL;
+			OSSL_DECODER_CTX *ctx = NULL;
+
+			ctx = OSSL_DECODER_CTX_new_for_pkey(&pkey, "PEM", NULL, "DH",
+			                                     OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS,
+			                                     NULL, NULL);
+			if(ctx == NULL)
+			{
+				rb_lib_log("%s: OSSL_DECODER_CTX_new_for_pkey: %s", __func__,
+				           rb_ssl_strerror(rb_ssl_last_err()));
+				BIO_free(bio);
+			}
+			else if(OSSL_DECODER_from_bio(ctx, bio) == 1)
+			{
+				dhp = EVP_PKEY_get1_DH(pkey);
+				if(dhp != NULL)
+				{
+					SSL_CTX_set_tmp_dh(ssl_ctx_new, dhp);
+					DH_free(dhp);
+					EVP_PKEY_free(pkey);
+				}
+				else
+				{
+					rb_lib_log("%s: EVP_PKEY_get1_DH: %s", __func__,
+					           rb_ssl_strerror(rb_ssl_last_err()));
+					EVP_PKEY_free(pkey);
+				}
+			}
+			else
+			{
+				rb_lib_log("%s: OSSL_DECODER_from_bio ('%s'): %s", __func__, dhfile,
+				           rb_ssl_strerror(rb_ssl_last_err()));
+				EVP_PKEY_free(pkey);
+			}
+			OSSL_DECODER_CTX_free(ctx);
+			BIO_free(bio);
+		}
+#else
+		/* OpenSSL < 3.0 or LibreSSL - use legacy API */
+		else if(PEM_read_bio_DHparams(bio, &dhp, NULL, NULL) == NULL)
+		{
+			rb_lib_log("%s: PEM_read_bio_DHparams ('%s'): %s", __func__, dhfile,
 			           rb_ssl_strerror(rb_ssl_last_err()));
-			fclose(dhf);
+			BIO_free(bio);
 		}
 		else
 		{
 			SSL_CTX_set_tmp_dh(ssl_ctx_new, dhp);
 			DH_free(dhp);
-			fclose(dhf);
+			BIO_free(bio);
 		}
+#endif
 	}
 
 	if(SSL_CTX_set_cipher_list(ssl_ctx_new, cipherlist) != 1)

@@ -266,7 +266,8 @@ load_help(void)
             continue;
         rb_snprintf(filename, sizeof(filename), "%s/%s", HPATH, ldirent->d_name);
         cacheptr = cache_file(filename, ldirent->d_name, HELP_OPER);
-        irc_dictionary_add(help_dict_oper, cacheptr->name, cacheptr);
+        if(cacheptr != NULL)
+            irc_dictionary_add(help_dict_oper, cacheptr->name, cacheptr);
     }
 
     closedir(helpfile_dir);
@@ -298,7 +299,8 @@ load_help(void)
 #endif
 
         cacheptr = cache_file(filename, ldirent->d_name, HELP_USER);
-        irc_dictionary_add(help_dict_user, cacheptr->name, cacheptr);
+        if(cacheptr != NULL)
+            irc_dictionary_add(help_dict_user, cacheptr->name, cacheptr);
     }
 
     closedir(helpfile_dir);

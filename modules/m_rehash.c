@@ -294,7 +294,6 @@ static struct hash_commands rehash_commands[] = {
     {"DNS", 	rehash_dns		},
     {"SSLD",	rehash_ssld		},
     {"MOTD", 	rehash_motd		},
-    {"RULES",       rehash_rules            },
     {"OMOTD", 	rehash_omotd		},
     {"TKLINES", 	rehash_tklines		},
     {"TDLINES", 	rehash_tdlines		},

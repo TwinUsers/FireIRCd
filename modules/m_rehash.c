@@ -44,7 +44,6 @@
 #include "hash.h"
 #include "cache.h"
 #include "sslproc.h"
-
 static int mo_rehash(struct Client *, struct Client *, int, const char **);
 static int me_rehash(struct Client *, struct Client *, int, const char **);
 
@@ -87,13 +86,11 @@ rehash_dns(struct Client *source_p)
 static void
 rehash_ssld(struct Client *source_p)
 {
-    if (!IsOperAdmin(source_p)) {
-        sendto_one(source_p, form_str(ERR_NOPRIVS),
-                   me.name, source_p->name, "admin");
-        return;
-    }
-    sendto_realops_snomask(SNO_GENERAL, L_ALL, "%s is restarting ssld",
+    sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
+                           "%s is restarting ssld",
                            get_oper_name(source_p));
+    if (!MyConnect(source_p))
+        remote_rehash_oper_p = source_p;
 
     restart_ssld();
 }
@@ -101,28 +98,26 @@ rehash_ssld(struct Client *source_p)
 static void
 rehash_motd(struct Client *source_p)
 {
-    struct stat sb;
-    struct tm *local_tm;
-    
     sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
                            "%s is forcing re-reading of MOTD file",
                            get_oper_name(source_p));
     if (!MyConnect(source_p))
         remote_rehash_oper_p = source_p;
 
-    if(stat(MPATH, &sb) == 0) {
-        local_tm = localtime(&sb.st_mtime);
-        
-        if(local_tm != NULL) {
-            rb_snprintf(user_motd_changed, sizeof(user_motd_changed),
-                        "%d/%d/%d %d:%d",
-                        local_tm->tm_mday, local_tm->tm_mon + 1,
-                        1900 + local_tm->tm_year, local_tm->tm_hour,
-                        local_tm->tm_min);
-        }
-    }
-    free_cachefile(user_motd);
-    user_motd = cache_file(MPATH, "ircd.motd", 0);
+    cache_user_motd();
+}
+
+static void
+rehash_rules(struct Client *source_p)
+{
+    sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
+                           "%s is forcing re-reading of RULES file",
+                           get_oper_name(source_p));
+    if (!MyConnect(source_p))
+        remote_rehash_oper_p = source_p;
+
+    free_cachefile(user_rules);
+    user_rules = cache_file(RPATH, "ircd.rules", 0);
 }
 
 static void
@@ -299,6 +294,7 @@ static struct hash_commands rehash_commands[] = {
     {"DNS", 	rehash_dns		},
     {"SSLD",	rehash_ssld		},
     {"MOTD", 	rehash_motd		},
+    {"RULES",       rehash_rules            },
     {"OMOTD", 	rehash_omotd		},
     {"TKLINES", 	rehash_tklines		},
     {"TDLINES", 	rehash_tdlines		},

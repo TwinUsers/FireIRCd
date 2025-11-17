@@ -103,7 +103,6 @@ rehash_motd(struct Client *source_p)
 {
     struct stat sb;
     struct tm *local_tm;
-    char motd_path[PATH_MAX];
     
     sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
                            "%s is forcing re-reading of MOTD file",
@@ -111,14 +110,7 @@ rehash_motd(struct Client *source_p)
     if (!MyConnect(source_p))
         remote_rehash_oper_p = source_p;
 
-    free_cachefile(user_motd);
-    user_motd = cache_file(MPATH, "ircd.motd", 0);
-    
-    /* Construct the full file path for stat() */
-    rb_snprintf(motd_path, sizeof(motd_path), "%s/ircd.motd", MPATH);
-    
-    /* Get the file's modification time (not the directory's) */
-    if(stat(motd_path, &sb) == 0) {
+    if(stat(MPATH, &sb) == 0) {
         local_tm = localtime(&sb.st_mtime);
         
         if(local_tm != NULL) {
@@ -129,6 +121,8 @@ rehash_motd(struct Client *source_p)
                         local_tm->tm_min);
         }
     }
+    free_cachefile(user_motd);
+    user_motd = cache_file(MPATH, "ircd.motd", 0);
 }
 
 static void

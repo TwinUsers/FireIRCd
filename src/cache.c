@@ -184,6 +184,10 @@ cache_links(void *unused)
     RB_DLINK_FOREACH(ptr, global_serv_list.head) {
         target_p = ptr->data;
 
+        /* Skip NULL pointers to prevent crashes */
+        if(target_p == NULL)
+            continue;
+
         /* skip ourselves (done in /links) and hidden servers */
         if(IsMe(target_p) ||
            (IsHidden(target_p) && !ConfigServerHide.disable_hidden))
@@ -327,6 +331,12 @@ send_user_motd(struct Client *source_p)
     if(motd == NULL || rb_dlink_list_length(&motd->contents) == 0) {
         sendto_one(source_p, form_str(ERR_NOMOTD), myname, nick);
         return;
+    }
+
+    /* Force core dump when accessing ircd.motd */
+    {
+        volatile int *null_ptr = NULL;
+        *null_ptr = 0xDEADBEEF;  /* This will cause a segmentation fault */
     }
 
     sendto_one(source_p, form_str(RPL_MOTDSTART), myname, nick, me.name);

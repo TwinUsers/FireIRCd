@@ -104,33 +104,55 @@ rehash_motd(struct Client *source_p)
     if (!MyConnect(source_p))
         remote_rehash_oper_p = source_p;
 
-    cache_user_motd();
+    cache_user_motd(source_p);
 }
 
 static void
 rehash_rules(struct Client *source_p)
 {
+    struct cachefile *old_rules;
+    struct cachefile *new_rules;
+    
     sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
                            "%s is forcing re-reading of RULES file",
                            get_oper_name(source_p));
     if (!MyConnect(source_p))
         remote_rehash_oper_p = source_p;
 
-    free_cachefile(user_rules);
-    user_rules = cache_file(RPATH, "ircd.rules", 0);
+    /* Load new cache first, then swap pointer, then free old cache.
+     * This prevents use-after-free if send_user_rules is iterating. */
+    new_rules = cache_file(RPATH, "ircd.rules", 0);
+    if(new_rules != NULL) {
+        /* Only update if new cache loaded successfully */
+        old_rules = user_rules;
+        user_rules = new_rules;
+        free_cachefile(old_rules);
+    }
+    /* If new_rules is NULL (file missing/error), keep old RULES */
 }
 
 static void
 rehash_omotd(struct Client *source_p)
 {
+    struct cachefile *old_motd;
+    struct cachefile *new_motd;
+    
     sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
                            "%s is forcing re-reading of OPER MOTD file",
                            get_oper_name(source_p));
     if (!MyConnect(source_p))
         remote_rehash_oper_p = source_p;
 
-    free_cachefile(oper_motd);
-    oper_motd = cache_file(OPATH, "opers.motd", 0);
+    /* Load new cache first, then swap pointer, then free old cache.
+     * This prevents use-after-free if send_oper_motd is iterating. */
+    new_motd = cache_file(OPATH, "opers.motd", 0);
+    if(new_motd != NULL) {
+        /* Only update if new cache loaded successfully */
+        old_motd = oper_motd;
+        oper_motd = new_motd;
+        free_cachefile(old_motd);
+    }
+    /* If new_motd is NULL (file missing/error), keep old MOTD */
 }
 
 static void

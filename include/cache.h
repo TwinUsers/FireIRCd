@@ -44,7 +44,7 @@ void load_help(void);
 void send_user_motd(struct Client *);
 void send_user_rules(struct Client *);
 void send_oper_motd(struct Client *);
-void cache_user_motd(void);
+void cache_user_motd(struct Client *source_p);
 void cache_user_rules(void);
 
 struct Dictionary;

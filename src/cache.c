@@ -117,8 +117,11 @@ cache_file(const char *filename, const char *shortname, int flags)
     if((in = fopen(filename, "r")) == NULL)
         return NULL;
 
-
     cacheptr = rb_malloc(sizeof(struct cachefile));
+    if(cacheptr == NULL) {
+        fclose(in);
+        return NULL;
+    }
 
     rb_strlcpy(cacheptr->name, shortname, sizeof(cacheptr->name));
     cacheptr->flags = flags;
@@ -130,10 +133,26 @@ cache_file(const char *filename, const char *shortname, int flags)
 
         if(!EmptyString(line)) {
             lineptr = rb_malloc(sizeof(struct cacheline));
+            if(lineptr == NULL) {
+                /* Memory allocation failed - free what we have and abort */
+                free_cachefile(cacheptr);
+                fclose(in);
+                return NULL;
+            }
             untabify(lineptr->data, line, sizeof(lineptr->data));
             rb_dlinkAddTail(lineptr, &lineptr->linenode, &cacheptr->contents);
-        } else
-            rb_dlinkAddTailAlloc(emptyline, &cacheptr->contents);
+        } else {
+            /* Only add emptyline if it's initialized */
+            if(emptyline != NULL)
+                rb_dlinkAddTailAlloc(emptyline, &cacheptr->contents);
+        }
+    }
+
+    /* Check for read errors */
+    if(ferror(in)) {
+        free_cachefile(cacheptr);
+        fclose(in);
+        return NULL;
     }
 
     if (0 == rb_dlink_list_length(&cacheptr->contents)) {
@@ -199,7 +218,6 @@ free_cachefile(struct cachefile *cacheptr)
     RB_DLINK_FOREACH_SAFE(ptr, next_ptr, cacheptr->contents.head) {
         if(ptr->data != emptyline) {
             struct cacheline *line = ptr->data;
-            rb_free(line->data);
             rb_free(line);
         } else {
             rb_free_rb_dlink_node(ptr);
@@ -297,16 +315,22 @@ send_user_motd(struct Client *source_p)
 {
     struct cacheline *lineptr;
     rb_dlink_node *ptr;
+    rb_dlink_node *next_ptr;
+    struct cachefile *motd;
     const char *myname = get_id(&me, source_p);
     const char *nick = get_id(source_p, source_p);
-    if(user_motd == NULL || rb_dlink_list_length(&user_motd->contents) == 0) {
+    
+    /* Capture pointer locally to prevent use-after-free if rehash happens */
+    motd = user_motd;
+    if(motd == NULL || rb_dlink_list_length(&motd->contents) == 0) {
         sendto_one(source_p, form_str(ERR_NOMOTD), myname, nick);
         return;
     }
 
     sendto_one(source_p, form_str(RPL_MOTDSTART), myname, nick, me.name);
 
-    RB_DLINK_FOREACH(ptr, user_motd->contents.head) {
+    /* Use safe iterator to prevent crash if cache is freed during iteration */
+    RB_DLINK_FOREACH_SAFE(ptr, next_ptr, motd->contents.head) {
         lineptr = ptr->data;
         sendto_one(source_p, form_str(RPL_MOTD), myname, nick, lineptr->data);
     }
@@ -315,10 +339,13 @@ send_user_motd(struct Client *source_p)
 }
 
 void
-cache_user_motd(void)
+cache_user_motd(struct Client *source_p)
 {
     struct stat sb;
     struct tm *local_tm;
+    struct cachefile *old_motd;
+    struct cachefile *new_motd;
+    int save_errno;
 
     if(stat(MPATH, &sb) == 0) {
         local_tm = localtime(&sb.st_mtime);
@@ -331,8 +358,40 @@ cache_user_motd(void)
                         local_tm->tm_min);
         }
     }
-    free_cachefile(user_motd);
-    user_motd = cache_file(MPATH, "ircd.motd", 0);
+    /* Load new cache first, then swap pointer, then free old cache.
+     * This prevents use-after-free if send_user_motd is iterating. */
+    errno = 0;
+    new_motd = cache_file(MPATH, "ircd.motd", 0);
+    save_errno = errno;
+    
+    if(new_motd != NULL) {
+        /* Only update if new cache loaded successfully */
+        old_motd = user_motd;
+        user_motd = new_motd;
+        free_cachefile(old_motd);
+        
+        if(source_p != NULL) {
+            sendto_one_notice(source_p, ":*** Notice -- Successfully reloaded MOTD from %s", MPATH);
+        }
+    } else {
+        /* If new_motd is NULL (file missing/error), keep old MOTD */
+        if(source_p != NULL) {
+            if(save_errno != 0) {
+                if(save_errno == ENOENT) {
+                    sendto_one_notice(source_p, ":*** Notice -- Failed to reload MOTD from %s: File not found", MPATH);
+                } else if(save_errno == EACCES) {
+                    sendto_one_notice(source_p, ":*** Notice -- Failed to reload MOTD from %s: Permission denied", MPATH);
+                } else {
+                    sendto_one_notice(source_p, ":*** Notice -- Failed to reload MOTD from %s: %s (errno %d)", 
+                                      MPATH, strerror(save_errno), save_errno);
+                }
+            } else if(user_motd == NULL) {
+                sendto_one_notice(source_p, ":*** Notice -- Failed to reload MOTD from %s: File is empty or contains no valid lines", MPATH);
+            } else {
+                sendto_one_notice(source_p, ":*** Notice -- Failed to reload MOTD from %s: File read error or memory allocation failed (keeping old MOTD)", MPATH);
+            }
+        }
+    }
 }
 
 
@@ -347,14 +406,19 @@ send_oper_motd(struct Client *source_p)
 {
     struct cacheline *lineptr;
     rb_dlink_node *ptr;
+    rb_dlink_node *next_ptr;
+    struct cachefile *motd;
 
-    if(oper_motd == NULL || rb_dlink_list_length(&oper_motd->contents) == 0)
+    /* Capture pointer locally to prevent use-after-free if rehash happens */
+    motd = oper_motd;
+    if(motd == NULL || rb_dlink_list_length(&motd->contents) == 0)
         return;
 
     sendto_one(source_p, form_str(RPL_OMOTDSTART),
                me.name, source_p->name);
 
-    RB_DLINK_FOREACH(ptr, oper_motd->contents.head) {
+    /* Use safe iterator to prevent crash if cache is freed during iteration */
+    RB_DLINK_FOREACH_SAFE(ptr, next_ptr, motd->contents.head) {
         lineptr = ptr->data;
         sendto_one(source_p, form_str(RPL_OMOTD),
                    me.name, source_p->name, lineptr->data);

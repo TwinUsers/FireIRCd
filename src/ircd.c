@@ -259,7 +259,7 @@ check_rehash(void *unused)
     if(doremotd) {
         sendto_realops_snomask(SNO_GENERAL, L_ALL,
                                "Got signal SIGUSR1, reloading ircd motd file");
-        cache_user_motd();
+        cache_user_motd(NULL);
         doremotd = 0;
     }
 }

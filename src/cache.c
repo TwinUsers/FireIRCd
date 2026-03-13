@@ -199,10 +199,9 @@ free_cachefile(struct cachefile *cacheptr)
     RB_DLINK_FOREACH_SAFE(ptr, next_ptr, cacheptr->contents.head) {
         if(ptr->data != emptyline) {
             struct cacheline *line = ptr->data;
-            rb_free(line->data);
             rb_free(line);
         } else {
-            rb_free_rb_dlink_node(ptr);
+            rb_dlinkDestroy(ptr, &cacheptr->contents);
         }
     }
 

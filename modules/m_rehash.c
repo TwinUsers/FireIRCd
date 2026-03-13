@@ -102,11 +102,12 @@ rehash_motd(struct Client *source_p)
 {
     sendto_realops_snomask(SNO_GENERAL, L_NETWIDE,
                            "%s is forcing re-reading of MOTD file",
-                           get_oper_name(source_p));
+                            get_oper_name(source_p));
     if (!MyConnect(source_p))
         remote_rehash_oper_p = source_p;
 
-    cache_user_motd();
+    free_cachefile(user_motd);
+    user_motd = cache_file(MPATH, "ircd.motd", 0);
 }
 
 static void

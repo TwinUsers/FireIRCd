@@ -1,5 +1,5 @@
 # FireIRCd
-[![CI](https://github.com/ChatCoders/FireIRCd/actions/workflows/ci.yml/badge.svg)](https://github.com/ChatCoders/FireIRCd/actions/workflows/ci.yml)
+[![CI](https://github.com/TwinUsers/FireIRCd/actions/workflows/ci.yml/badge.svg)](https://github.com/TwinUsers/FireIRCd/actions/workflows/ci.yml)
 
 **FireIRCd** is a high performance, lightweight, and scalable
 IRC daemon. It is a fork of the now-defunct ShadowIRCD and seeks to continue in
